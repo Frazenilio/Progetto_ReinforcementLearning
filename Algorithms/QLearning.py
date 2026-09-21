@@ -1,0 +1,63 @@
+import gymnasium as gym
+import numpy as np
+
+from Utils.policy import discretize, build_q_table, epsilon_greedy_action, greedy_action
+
+
+## Q-Learning per l'apprendimento di una policy
+def q_learning(env_name: str, bins_list: list, num_episodes: int = 5000,
+               render: bool = False, alpha: float = 0.2, gamma: float = 0.99,
+               epsilon: float = 0.1):
+    if render:
+        env = gym.make(env_name, render_mode="human")
+    else:
+        env = gym.make(env_name)
+
+    ## Azioni preliminari
+    n_actions = env.action_space.n
+    q_table = build_q_table(bins_list, n_actions)
+    reward_history = []
+
+    for episode in range(num_episodes):
+        obs, info = env.reset()
+        state = discretize(obs, bins_list)
+
+        episode_reward = 0.0
+        done = False
+
+        while not done:
+            # Epsilon-greedy: esplora con probabilità epsilon, altrimenti sfrutta
+            action = epsilon_greedy_action(q_table, state, epsilon, n_actions)
+
+            # Esegui l'azione nell'ambiente
+            next_obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            next_state = discretize(next_obs, bins_list)
+
+            ## Prima facciamo il max q(s', a') scegliendo la migliore azione (che non e' garantito sia quella che sceglieremo dopo)
+            best_next_q = np.max(q_table[next_state])
+            ## Ora vediamo moltiplichiamo per gamme e sommiamo reward
+            ## La moltiplicazione per 1-done e' perche' se abbiamo finito, non serve 
+            td_target = reward + gamma * best_next_q * (1 - int(done))
+            ## Ci togliamo il valore q(s,a)
+            td_error = td_target - q_table[state][action]
+            ## E aggiorniamo il valore
+            q_table[state][action] += alpha * td_error
+
+            obs = next_obs
+            state = next_state
+            episode_reward += reward
+
+        reward_history.append(episode_reward)
+
+        # Debugging: Stampa progresso ogni 100 episodi
+        # if (episode + 1) % 100 == 0:
+        #     avg_reward = np.mean(reward_history[-100:])
+        #     print(f"Episodio {episode + 1}/{num_episodes} | "
+        #           f"Reward medio (ultimi 100): {avg_reward:.1f} | "
+        #           f"Epsilon: {epsilon:.3f}")
+
+    env.close()
+    # print(f"\nQ-Learning completato! Reward medio finale (ultimi 100): "
+    #       f"{np.mean(reward_history[-100:]):.1f}")
+    return q_table, reward_history
